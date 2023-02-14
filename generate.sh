@@ -39,7 +39,7 @@ symlinkJoin {
 END
 )
 
-files=$(nix-build -vv -E "$fetchFromGitHubExpr" 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
+files=$(nix-build -vv -E "$fetchFromGitHubExpr" --no-out-link 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
 
 for file in $files; do
     relPath=$(realpath --relative-to="$fullNixpkgs" "$file")
