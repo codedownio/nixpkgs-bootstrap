@@ -48,4 +48,4 @@ for file in $files; do
 done
 
 # Extra files
-cp .version "$out"
+cp "$fullNixpkgs/.version" "$out"
