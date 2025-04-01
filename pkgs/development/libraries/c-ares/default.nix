@@ -1,10 +1,14 @@
-{ lib, stdenv, fetchurl, writeTextDir
-, fetchpatch
-, withCMake ? true, cmake
+{
+  lib,
+  stdenv,
+  fetchurl,
+  updateAutotoolsGnuConfigScriptsHook,
+  withCMake ? true,
+  cmake,
 
-# sensitive downstream packages
-, curl
-, grpc # consumes cmake config
+  # sensitive downstream packages
+  curl,
+  grpc, # consumes cmake config
 }:
 
 # Note: this package is used for bootstrapping fetchurl, and thus
@@ -14,39 +18,42 @@
 
 stdenv.mkDerivation rec {
   pname = "c-ares";
-  version = "1.18.1";
-  outputs = [ "out" "dev" ];
+  version = "1.27.0";
 
   src = fetchurl {
-    url = "https://c-ares.haxx.se/download/${pname}-${version}.tar.gz";
-    sha256 = "sha256-Gn1SqKhKn7/7G+kTPA9uFyF9kepab6Yfa0cpzaeOu88=";
+    # Note: tag name varies in some versions, e.g. v1.30.0, c-ares-1_17_0.
+    url = "https://github.com/c-ares/${pname}/releases/download/cares-${
+      builtins.replaceStrings [ "." ] [ "_" ] version
+    }/${pname}-${version}.tar.gz";
+    hash = "sha256-CnK+ZpWZVcQ+KvL70DQY6Cor1UZGBOyaYhR+N6zrQgs=";
   };
 
-  # c-ares is used for fetchpatch, so avoid using it for c-aresMinimal
-  patches = lib.optionals withCMake [
-    # fix .pc paths created by cmake build
-    (fetchpatch {
-      url = "https://github.com/jonringer/c-ares/commit/9806a8a2f999a8a3efa3c893f2854dce6919d5bb.patch";
-      sha256 = "sha256-nh/ZKdan2/FTrouApRQA7O8KGZrLEUuWhxGOktiiGwU=";
-    })
+  outputs = [
+    "out"
+    "dev"
+    "man"
   ];
 
-  nativeBuildInputs = lib.optionals withCMake [ cmake ];
+  nativeBuildInputs = [ updateAutotoolsGnuConfigScriptsHook ] ++ lib.optionals withCMake [ cmake ];
 
-  cmakeFlags = [] ++ lib.optionals stdenv.hostPlatform.isStatic [
-    "-DCARES_SHARED=OFF"
-    "-DCARES_STATIC=ON"
-  ];
+  cmakeFlags =
+    [ ]
+    ++ lib.optionals stdenv.hostPlatform.isStatic [
+      "-DCARES_SHARED=OFF"
+      "-DCARES_STATIC=ON"
+    ];
 
   enableParallelBuilding = true;
 
   passthru.tests = {
-    inherit curl grpc;
+    inherit grpc;
+    curl = (curl.override { c-aresSupport = true; }).tests.withCheck;
   };
 
   meta = with lib; {
-    description = "A C library for asynchronous DNS requests";
+    description = "C library for asynchronous DNS requests";
     homepage = "https://c-ares.haxx.se";
+    changelog = "https://c-ares.org/changelog.html#${lib.replaceStrings [ "." ] [ "_" ] version}";
     license = licenses.mit;
     platforms = platforms.all;
   };

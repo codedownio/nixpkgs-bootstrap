@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - ubuntu-latest # x64
+        - ubuntu-24.04-arm # arm64
+        - macOS-13 # "Intel"
+        - macOS-latest # arm64
+
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: cachix/install-nix-action@v31
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+
+    - name: Builds with fetchFromGitHub
+      run : |
+        export NIX_PATH=nixpkgs=$(pwd)
+        echo "Got NIX_PATH: $NIX_PATH"
+
+        expr=$(cat <<-END
+        with { inherit (import <nixpkgs> {}) fetchFromGitHub fetchgit symlinkJoin; };
+
+        symlinkJoin {
+          name = "slim-nixpkgs-path-closure";
+          paths = [
+            (fetchFromGitHub {
+              owner = "NixOS";
+              repo = "nixpkgs";
+              rev = "6d3fc36c541ae715d43db5c1355890f39024b26f";
+              sha256 = "sha256-cRsIC0Ft5McBSia0rDdJIHy3muWqKn3rvjFx92DU2dY=";
+            })
+          ];
+        }
+        END
+        )
+
+        nix-build -E "$expr"
+
+    - name: Builds with fetchgit
+      run : |
+        export NIX_PATH=nixpkgs=$(pwd)
+        echo "Got NIX_PATH: $NIX_PATH"
+
+        expr=$(cat <<-END
+        with { inherit (import <nixpkgs> {}) fetchFromGitHub fetchgit symlinkJoin; };
+
+        symlinkJoin {
+          name = "slim-nixpkgs-path-closure";
+          paths = [
+            (fetchgit {
+              url = "https://github.com/NixOS/nixpkgs";
+              rev = "6d3fc36c541ae715d43db5c1355890f39024b26f";
+              sha256 = "sha256-cRsIC0Ft5McBSia0rDdJIHy3muWqKn3rvjFx92DU2dY=";
+            })
+          ];
+        }
+        END
+        )
+
+        nix-build -E "$expr"
+}

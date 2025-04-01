@@ -8,6 +8,13 @@
    arguments. Normal users should not import this directly but instead
    import `pkgs/default.nix` or `default.nix`. */
 
+let
+  # An overlay to auto-call packages in ../by-name.
+  # By defining it at the top of the file,
+  # this value gets reused even if this file is imported multiple times,
+  # thanks to Nix's import-value cache.
+  autoCalledPackages = import ./by-name-overlay.nix ../by-name;
+in
 
 { ## Misc parameters kept the same for all stages
   ##
@@ -42,6 +49,10 @@
 , # The standard environment to use for building packages.
   stdenv
 
+, # `stdenv` without a C compiler. Passing in this helps avoid infinite
+  # recursions, and may eventually replace passing in the full stdenv.
+  stdenvNoCC ? stdenv.override { cc = null; hasCC = false; }
+
 , # This is used because stdenv replacement and the stdenvCross do benefit from
   # the overridden configuration provided by the user, as opposed to the normal
   # bootstrapping stdenvs.
@@ -50,9 +61,7 @@
 , # Non-GNU/Linux OSes are currently "impure" platforms, with their libc
   # outside of the store.  Thus, GCC, GFortran, & co. must always look for files
   # in standard system directories (/usr/include, etc.)
-  noSysDirs ? stdenv.buildPlatform.system != "x86_64-freebsd"
-           && stdenv.buildPlatform.system != "i686-freebsd"
-           && stdenv.buildPlatform.system != "x86_64-solaris"
+  noSysDirs ? stdenv.buildPlatform.system != "x86_64-solaris"
            && stdenv.buildPlatform.system != "x86_64-kfreebsd-gnu"
 
 , # The configuration attribute set
@@ -101,10 +110,11 @@ let
     };
 
   trivialBuilders = self: super:
-    import ../build-support/trivial-builders.nix {
+    import ../build-support/trivial-builders {
       inherit lib;
+      inherit (self) config;
       inherit (self) runtimeShell stdenv stdenvNoCC;
-      inherit (self.pkgsBuildHost) shellcheck;
+      inherit (self.pkgsBuildHost) jq shellcheck-minimal;
       inherit (self.pkgsBuildHost.xorg) lndir;
     };
 
@@ -135,15 +145,7 @@ let
     pkgs = self.pkgsHostTarget;
     targetPackages = self.pkgsTargetTarget;
 
-    inherit stdenv;
-  };
-
-  # The old identifiers for cross-compiling. These should eventually be removed,
-  # and the packages that rely on them refactored accordingly.
-  platformCompat = self: super: let
-    inherit (super.stdenv) buildPlatform hostPlatform targetPlatform;
-  in {
-    inherit buildPlatform hostPlatform targetPlatform;
+    inherit stdenv stdenvNoCC;
   };
 
   splice = self: super: import ./splice.nix lib self (adjacentPackages != null);
@@ -199,16 +201,46 @@ let
       # Bootstrap a cross stdenv using the LLVM toolchain.
       # This is currently not possible when compiling natively,
       # so we don't need to check hostPlatform != buildPlatform.
-      crossSystem = stdenv.hostPlatform // {
+      crossSystem = stdenv.targetPlatform // {
         useLLVM = true;
+        linker = "lld";
+      };
+    };
+
+    pkgsArocc = nixpkgsFun {
+      overlays = [
+        (self': super': {
+          pkgsArocc = super';
+        })
+      ] ++ overlays;
+      # Bootstrap a cross stdenv using the Aro C compiler.
+      # This is currently not possible when compiling natively,
+      # so we don't need to check hostPlatform != buildPlatform.
+      crossSystem = stdenv.hostPlatform // {
+        useArocc = true;
+        linker = "lld";
+      };
+    };
+
+    pkgsZig = nixpkgsFun {
+      overlays = [
+        (self': super': {
+          pkgsZig = super';
+        })
+      ] ++ overlays;
+      # Bootstrap a cross stdenv using the Zig toolchain.
+      # This is currently not possible when compiling natively,
+      # so we don't need to check hostPlatform != buildPlatform.
+      crossSystem = stdenv.hostPlatform // {
+        useZig = true;
         linker = "lld";
       };
     };
 
     # All packages built with the Musl libc. This will override the
     # default GNU libc on Linux systems. Non-Linux systems are not
-    # supported.
-    pkgsMusl = if stdenv.hostPlatform.isLinux then nixpkgsFun {
+    # supported. 32-bit is also not supported.
+    pkgsMusl = if stdenv.hostPlatform.isLinux && stdenv.buildPlatform.is64bit then nixpkgsFun {
       overlays = [ (self': super': {
         pkgsMusl = super';
       })] ++ overlays;
@@ -216,7 +248,7 @@ let
         then "localSystem" else "crossSystem"} = {
         parsed = makeMuslParsedPlatform stdenv.hostPlatform.parsed;
       };
-    } else throw "Musl libc only supports Linux systems.";
+    } else throw "Musl libc only supports 64-bit Linux systems.";
 
     # All packages built for i686 Linux.
     # Used by wine, firefox with debugging version of Flash, ...
@@ -244,6 +276,16 @@ let
       };
     } else throw "x86_64 Darwin package set can only be used on Darwin systems.";
 
+    # If already linux: the same package set unaltered
+    # Otherwise, return a natively built linux package set for the current cpu architecture string.
+    # (ABI and other details will be set to the default for the cpu/os pair)
+    pkgsLinux =
+      if stdenv.hostPlatform.isLinux
+      then self
+      else nixpkgsFun {
+        localSystem = lib.systems.elaborate "${stdenv.hostPlatform.parsed.cpu.name}-linux";
+      };
+
     # Extend the package set with zero or more overlays. This preserves
     # preexisting overlays. Prefer to initialize with the right overlays
     # in one go when calling Nixpkgs, for performance and simplicity.
@@ -267,14 +309,41 @@ let
       overlays = [ (self': super': {
         pkgsStatic = super';
       })] ++ overlays;
-    } // lib.optionalAttrs stdenv.hostPlatform.isLinux {
       crossSystem = {
         isStatic = true;
-        parsed = makeMuslParsedPlatform stdenv.hostPlatform.parsed;
-      } // lib.optionalAttrs (stdenv.hostPlatform.system == "powerpc64-linux") {
-        gcc.abi = "elfv2";
+        parsed =
+          if stdenv.hostPlatform.isLinux
+          then makeMuslParsedPlatform stdenv.hostPlatform.parsed
+          else stdenv.hostPlatform.parsed;
+        gcc = lib.optionalAttrs (stdenv.hostPlatform.system == "powerpc64-linux") { abi = "elfv2"; } //
+          stdenv.hostPlatform.gcc or {};
       };
     });
+
+    pkgsExtraHardening = nixpkgsFun {
+      overlays = [
+        (self': super': {
+          pkgsExtraHardening = super';
+          stdenv = super'.withDefaultHardeningFlags (
+            super'.stdenv.cc.defaultHardeningFlags ++ [
+              "shadowstack"
+              "pacret"
+              "stackclashprotection"
+              "trivialautovarinit"
+            ]
+          ) super'.stdenv;
+          glibc = super'.glibc.override rec {
+            enableCET = if self'.stdenv.hostPlatform.isx86_64 then "permissive" else false;
+            enableCETRuntimeDefault = enableCET != false;
+          };
+        } // lib.optionalAttrs (with super'.stdenv.hostPlatform; isx86_64 && isLinux) {
+          # causes shadowstack disablement
+          pcre = super'.pcre.override { enableJit = false; };
+          pcre-cpp = super'.pcre-cpp.override { enableJit = false; };
+          pcre16 = super'.pcre16.override { enableJit = false; };
+        })
+      ] ++ overlays;
+    };
   };
 
   # The complete chain of package set builders, applied from top to bottom.
@@ -282,10 +351,10 @@ let
   # previous bootstrapping phases which have already been overlayed.
   toFix = lib.foldl' (lib.flip lib.extends) (self: {}) ([
     stdenvBootstappingAndPlatforms
-    platformCompat
     stdenvAdapters
     trivialBuilders
     splice
+    autoCalledPackages
     allPackages
     otherPackageSets
     aliases
