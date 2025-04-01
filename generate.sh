@@ -33,7 +33,7 @@ echo "Got full Nixpkgs: ${fullNixpkgs}"
 NIX_PATH="nixpkgs=$fullNixpkgs"
 export NIX_PATH
 
-fetchFromGitHubExpr=$(cat <<-END
+expr=$(cat <<-END
 with { inherit (import <nixpkgs> {}) fetchFromGitHub fetchgit symlinkJoin; };
 
 symlinkJoin {
@@ -57,7 +57,7 @@ symlinkJoin {
 END
 )
 
-files=$(nix-build -vv -E "$fetchFromGitHubExpr" --no-out-link 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
+files=$(nix-build -vv -E "$expr" --no-out-link 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
 
 for file in $files; do
     relPath=$(realpath --relative-to="$fullNixpkgs" "$file")
