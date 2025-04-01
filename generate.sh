@@ -5,10 +5,13 @@ cd "$SCRIPTDIR"
 
 # Remove existing files
 
-find -not -path "./.git/*" \
+find \
+  -not -path "./.git/*" \
   -not -name ".git" \
+  -not -name "./.github/*" \
   -not -name ".github" \
   -not -name "generate.sh" \
+  -not -name ".gitignore" \
   -delete
 
 # Generate
@@ -57,7 +60,7 @@ symlinkJoin {
 END
 )
 
-files=$(nix-build -vv -E "$expr" --no-out-link 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
+files=$(nix-build -vv -E "$expr" --store /tmp/test1 --no-out-link 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
 
 for file in $files; do
     relPath=$(realpath --relative-to="$fullNixpkgs" "$file")

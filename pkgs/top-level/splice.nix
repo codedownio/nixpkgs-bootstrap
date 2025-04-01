@@ -121,19 +121,9 @@ let
       ;
   };
 
-  splicedPackagesWithXorg = splicedPackages // builtins.removeAttrs splicedPackages.xorg [
-    "callPackage"
-    "newScope"
-    "overrideScope"
-    "packages"
-  ];
+  splicedPackagesWithXorg = splicedPackages;
 
-  packagesWithXorg = pkgs // builtins.removeAttrs pkgs.xorg [
-    "callPackage"
-    "newScope"
-    "overrideScope"
-    "packages"
-  ];
+  packagesWithXorg = pkgs;
 
   pkgsForCall = if actuallySplice then splicedPackagesWithXorg else packagesWithXorg;
 

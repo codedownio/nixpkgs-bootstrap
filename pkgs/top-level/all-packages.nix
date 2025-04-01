@@ -12304,27 +12304,6 @@ with pkgs;
     inherit (darwin.apple_sdk.libs) Xplugin;
   };
 
-  xorg = let
-    # Use `lib.callPackageWith __splicedPackages` rather than plain `callPackage`
-    # so as not to have the newly bound xorg items already in scope,  which would
-    # have created a cycle.
-    overrides = lib.callPackageWith __splicedPackages ../servers/x11/xorg/overrides.nix {
-      inherit (darwin.apple_sdk.frameworks) ApplicationServices Carbon Cocoa;
-      inherit (darwin.apple_sdk.libs) Xplugin;
-      inherit (buildPackages.darwin) bootstrap_cmds;
-      udev = if stdenv.hostPlatform.isLinux then udev else null;
-      libdrm = if stdenv.hostPlatform.isLinux then libdrm else null;
-    };
-
-    generatedPackages = lib.callPackageWith __splicedPackages ../servers/x11/xorg/default.nix { };
-
-    xorgPackages = makeScopeWithSplicing' {
-      otherSplices = generateSplicesForMkScope "xorg";
-      f = lib.extends overrides generatedPackages;
-    };
-
-  in recurseIntoAttrs xorgPackages;
-
   xwayland = callPackage ../servers/x11/xorg/xwayland.nix { };
 
   zabbixFor = version: rec {
