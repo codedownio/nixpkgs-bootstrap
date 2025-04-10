@@ -60,13 +60,27 @@ symlinkJoin {
 END
 )
 
-files=$(nix-build -vv -E "$expr" --store /tmp/test1 --no-out-link 2>&1 | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq)
+STORE=/tmp/test1
+sudo rm -rf "$STORE"
 
-for file in $files; do
-    relPath=$(realpath --relative-to="$fullNixpkgs" "$file")
+strace -f -e trace=file -o strace_raw.txt nix-build -vv -E "$expr" --store "$STORE" --no-out-link --substituters https://cache.nixos.org > all_build_output.txt 2>&1
+
+cat all_build_output.txt | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq > log_files.txt
+cat strace_raw.txt | grep open > strace_open.txt
+cat strace_open.txt | grep -o -P "$fullNixpkgs/[^\"]*" | sort | uniq > strace_files.txt
+
+while IFS= read -r file; do
+  echo "Processing: $file"
+
+  relPath=$(realpath --relative-to="$fullNixpkgs" "$file")
+
+  if [[ -d "$file" ]]; then
+    mkdir -p "$file"
+  else
     mkdir -p "$out/$(dirname "$relPath")"
     cp "$file" "$out/$relPath"
-done
+  fi
+done < "strace_files.txt"
 
 # Extra files
 cp "$fullNixpkgs/.version" "$out"
