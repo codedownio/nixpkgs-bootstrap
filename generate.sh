@@ -12,6 +12,8 @@ find \
   -not -name ".github" \
   -not -name "generate.sh" \
   -not -name ".gitignore" \
+  -not -name "test.nix" \
+  -not -name "test-fetch-only.nix" \
   -delete
 
 # Generate
