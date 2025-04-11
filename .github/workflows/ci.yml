@@ -31,7 +31,7 @@ jobs:
         echo "Got NIX_PATH: $NIX_PATH"
 
         expr=$(cat <<-END
-        with { inherit (import <nixpkgs> {}) fetchFromGitHub fetchgit symlinkJoin; };
+        with { inherit (import <nixpkgs> {}) fetchFromGitHub symlinkJoin; };
 
         symlinkJoin {
           name = "slim-nixpkgs-path-closure";
@@ -55,7 +55,7 @@ jobs:
         echo "Got NIX_PATH: $NIX_PATH"
 
         expr=$(cat <<-END
-        with { inherit (import <nixpkgs> {}) fetchFromGitHub fetchgit symlinkJoin; };
+        with { inherit (import <nixpkgs> {}) fetchgit symlinkJoin; };
 
         symlinkJoin {
           name = "slim-nixpkgs-path-closure";
