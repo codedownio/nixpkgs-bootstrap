@@ -226,47 +226,13 @@ rec {
         # Filter out arguments that would be passed
         (removeAttrs fargs (attrNames allArgs)));
 
-      # Get a list of suggested argument names for a given missing one
-      getSuggestions = arg: pipe (autoArgs // args) [
-        attrNames
-        # Only use ones that are at most 2 edits away. While mork would work,
-        # levenshteinAtMost is only fast for 2 or less.
-        (filter (levenshteinAtMost 2 arg))
-        # Put strings with shorter distance first
-        (sortOn (levenshtein arg))
-        # Only take the first couple results
-        (take 3)
-        # Quote all entries
-        (map (x: "\"" + x + "\""))
-      ];
-
-      prettySuggestions = suggestions:
-        if suggestions == [] then ""
-        else if length suggestions == 1 then ", did you mean ${elemAt suggestions 0}?"
-        else ", did you mean ${concatStringsSep ", " (lib.init suggestions)} or ${lib.last suggestions}?";
-
-      errorForArg = arg:
-        let
-          loc = builtins.unsafeGetAttrPos arg fargs;
-          # loc' can be removed once lib/minver.nix is >2.3.4, since that includes
-          # https://github.com/NixOS/nix/pull/3468 which makes loc be non-null
-          loc' = if loc != null then loc.file + ":" + toString loc.line
-            else if ! isFunction fn then
-              toString fn + optionalString (pathIsDirectory fn) "/default.nix"
-            else "<unknown location>";
-        in "Function called without required argument \"${arg}\" at "
-        + "${loc'}${prettySuggestions (getSuggestions arg)}";
-
-      # Only show the error for the first missing argument
-      error = errorForArg (head (attrNames missingArgs));
-
     in if missingArgs == {}
        then makeOverridable f allArgs
        # This needs to be an abort so it can't be caught with `builtins.tryEval`,
        # which is used by nix-env and ofborg to filter out packages that don't evaluate.
        # This way we're forced to fix such errors in Nixpkgs,
        # which is especially relevant with allowAliases = false
-       else abort "lib.customisation.callPackageWith: ${error}";
+       else (makeOverridable f (allArgs // (lib.mapAttrs (_: null) missingArgs)));
 
 
   /**
@@ -299,8 +265,10 @@ rec {
     let
       f = if isFunction fn then fn else import fn;
       auto = intersectAttrs (functionArgs f) autoArgs;
+      allArgs = auto // args;
+      missingArgs = (filterAttrs (name: value: ! value) (removeAttrs (functionArgs f) (attrNames allArgs)));
       mirrorArgs = mirrorFunctionArgs f;
-      origArgs = auto // args;
+      origArgs = auto // args // (lib.mapAttrs (_: null) missingArgs);
       pkgs = f origArgs;
       mkAttrOverridable = name: _: makeOverridable (mirrorArgs (newArgs: (f newArgs).${name})) origArgs;
     in
