@@ -67,10 +67,7 @@ sudo rm -rf "$STORE"
 
 nix-build -vv -E "$expr" --store "$STORE" --no-out-link --substituters https://cache.nixos.org > all_build_output.txt 2>&1
 
-# cat all_build_output.txt | grep -o -P "$fullNixpkgs/[^']*" | sort | uniq > log_files.txt
 cat all_build_output.txt | grep -o "$fullNixpkgs/[^']*" | sort | uniq > log_files.txt
-# cat strace_raw.txt | grep open > strace_open.txt
-# cat strace_open.txt | grep -o -P "$fullNixpkgs/[^\"]*" | sort | uniq > strace_files.txt
 
 while IFS= read -r file; do
   echo "Processing: $file"
