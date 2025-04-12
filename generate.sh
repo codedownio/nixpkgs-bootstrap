@@ -86,3 +86,7 @@ done < "strace_files.txt"
 
 # Extra files
 cp "$fullNixpkgs/.version" "$out"
+
+# Needed for fetchgit apparently
+mkdir -p "pkgs/os-specific/darwin/apple-source-releases"
+touch "pkgs/os-specific/darwin/apple-source-releases/.gitkeep"
