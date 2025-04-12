@@ -27,11 +27,8 @@ jobs:
 
     - name: Builds with fetchFromGitHub
       run : |
-        export NIX_PATH=nixpkgs=$(pwd)
-        echo "Got NIX_PATH: $NIX_PATH"
-
         expr=$(cat <<-END
-        with { inherit (import <nixpkgs> {}) fetchFromGitHub symlinkJoin; };
+        with { inherit (import ./. {}) fetchFromGitHub symlinkJoin; };
 
         symlinkJoin {
           name = "slim-nixpkgs-path-closure";
@@ -47,15 +44,12 @@ jobs:
         END
         )
 
-        nix-build -E "$expr"
+        nix-build --show-trace -E "$expr"
 
     - name: Builds with fetchgit
       run : |
-        export NIX_PATH=nixpkgs=$(pwd)
-        echo "Got NIX_PATH: $NIX_PATH"
-
         expr=$(cat <<-END
-        with { inherit (import <nixpkgs> {}) fetchgit symlinkJoin; };
+        with { inherit (import ./. {}) fetchgit symlinkJoin; };
 
         symlinkJoin {
           name = "slim-nixpkgs-path-closure";
@@ -70,4 +64,4 @@ jobs:
         END
         )
 
-        nix-build -E "$expr"
+        nix-build --show-trace -E "$expr"
